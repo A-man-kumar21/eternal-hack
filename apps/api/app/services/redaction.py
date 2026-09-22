@@ -259,6 +259,9 @@ def apply_approvals(
         wrapped_dek=enc["wrapped_dek"], dek_nonce=enc["dek_nonce"],
         gcm_nonce=enc["gcm_nonce"], gcm_tag=enc["gcm_tag"],
         is_derivative=True, parent_version_id=version.id,
+        # server-generated from the already-scanned parent bytes: no new
+        # untrusted input, so the AV status carries over
+        av_status=version.av_status, av_detail=version.av_detail,
         redaction_summary={
             "parent_version_id": version.id,
             "marks_approved": len(approved_spans),

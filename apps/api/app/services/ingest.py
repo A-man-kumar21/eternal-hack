@@ -28,6 +28,7 @@ from ..config import get_settings
 from ..errors import BadRequest, TooLarge, Unprocessable
 from ..models import (
     AuditOutcome,
+    AVStatus,
     Document,
     DocumentVersion,
     DocStatus,
@@ -219,6 +220,8 @@ def process_job(db: Session, job_id: int, storage: BaseStorage | None = None,
             wrapped_dek=enc["wrapped_dek"], dek_nonce=enc["dek_nonce"],
             gcm_nonce=enc["gcm_nonce"], gcm_tag=enc["gcm_tag"],
             is_derivative=False, created_by=actor_id,
+            av_status=AVStatus(av.get("av", "skipped")),
+            av_detail=av.get("reason") or av.get("detail"),
         )
         db.add(version)
         db.flush()

@@ -85,6 +85,13 @@ class ScanStatus(str, enum.Enum):
     failed = "failed"
 
 
+class AVStatus(str, enum.Enum):
+    pending = "pending"    # scan not run yet
+    clean = "clean"        # scanned, no threats found
+    positive = "positive"  # threat found (document is quarantined instead)
+    skipped = "skipped"    # no AV service configured or unreachable
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -167,6 +174,8 @@ class DocumentVersion(Base):
     is_derivative: Mapped[bool] = mapped_column(Boolean, default=False)
     parent_version_id: Mapped[int | None] = mapped_column(ForeignKey("document_versions.id"), nullable=True)
     redaction_summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    av_status: Mapped[AVStatus] = mapped_column(Enum(AVStatus), default=AVStatus.pending)
+    av_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

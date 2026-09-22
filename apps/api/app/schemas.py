@@ -100,6 +100,8 @@ class VersionOut(BaseModel):
     is_derivative: bool
     parent_version_id: int | None
     redaction_summary: dict | None
+    av_status: str = "pending"
+    av_detail: str | None = None
     created_by: int
     created_at: str
 
@@ -110,6 +112,8 @@ class CurrentVersionOut(BaseModel):
     sha256: str
     size_bytes: int
     mime_type: str
+    av_status: str = "pending"
+    av_detail: str | None = None
     created_at: str
     created_by: int
 

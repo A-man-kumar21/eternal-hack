@@ -45,6 +45,7 @@ def document_to_dict(db: Session, doc: Document) -> dict:
             {
                 "id": v.id, "version_number": v.version_number, "sha256": v.sha256,
                 "size_bytes": v.size_bytes, "mime_type": v.mime_type,
+                "av_status": v.av_status.value, "av_detail": v.av_detail,
                 "created_at": v.created_at.isoformat(), "created_by": v.created_by,
             } if v else None
         ),
@@ -61,6 +62,7 @@ def version_to_dict(v: DocumentVersion) -> dict:
         "sha256": v.sha256, "size_bytes": v.size_bytes, "mime_type": v.mime_type,
         "is_derivative": v.is_derivative, "parent_version_id": v.parent_version_id,
         "redaction_summary": v.redaction_summary,
+        "av_status": v.av_status.value, "av_detail": v.av_detail,
         "created_by": v.created_by, "created_at": v.created_at.isoformat(),
     }
 

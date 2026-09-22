@@ -37,6 +37,28 @@ export function StatusPill({ status }: { status: DocStatus }) {
   );
 }
 
+const AV_STYLE: Record<string, string> = {
+  clean: 'pill-green',
+  skipped: 'pill-amber',
+  positive: 'pill-red',
+  pending: 'pill-amber pill-pulse',
+};
+
+const AV_LABEL: Record<string, string> = {
+  clean: '🛡️ Scanned — clean',
+  skipped: '⚠️ AV skipped',
+  positive: '🦠 AV positive',
+  pending: '⏳ AV pending',
+};
+
+export function AvBadge({ status, detail }: { status: string; detail?: string | null }) {
+  return (
+    <span className={`pill ${AV_STYLE[status] ?? ''}`} title={detail ?? undefined}>
+      <span className="dot" /> {AV_LABEL[status] ?? status}
+    </span>
+  );
+}
+
 export function RoleBadge({ role }: { role: Role }) {
   return <span className="role-badge">{ROLE_LABEL[role] ?? role}</span>;
 }

@@ -45,6 +45,8 @@ export interface Version {
   sha256: string;
   size_bytes: number;
   mime_type: string;
+  av_status: string;
+  av_detail?: string | null;
   created_at: string;
   created_by: string;
 }

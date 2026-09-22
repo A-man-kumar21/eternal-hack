@@ -9,7 +9,7 @@ import type {
 } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import {
-  Empty, ErrorBanner, Hash, Modal, ReasonField, Spinner, StatusPill, formatBytes, formatTs,
+  AvBadge, Empty, ErrorBanner, Hash, Modal, ReasonField, Spinner, StatusPill, formatBytes, formatTs,
 } from '../components/ui';
 
 const DOC_TYPES = ['FIR', 'EVIDENCE_PHOTO', 'CHARGE_SHEET', 'COURT_FILING', 'STATEMENT', 'OTHER'] as const;
@@ -322,6 +322,7 @@ function OverviewTab({ doc, caseDetail }: { doc: Document; caseDetail: CaseDetai
         <dt>Title</dt><dd>{doc.title}</dd>
         <dt>Type</dt><dd>{doc.doc_type.replace(/_/g, ' ')}</dd>
         <dt>Status</dt><dd><StatusPill status={doc.status} /></dd>
+        <dt>Antivirus</dt><dd><AvBadge status={v.av_status} detail={v.av_detail} /></dd>
         <dt>Version</dt><dd>v{v.version_number} of {doc.version_count}</dd>
         <dt>Size</dt><dd>{formatBytes(v.size_bytes)} · {v.mime_type}</dd>
         <dt>Created</dt><dd>{formatTs(doc.created_at)}</dd>
@@ -424,6 +425,7 @@ function VersionsList({ docId }: { docId: string }) {
         <div key={ver.id} className="card flat" style={{ marginBottom: 10, padding: 12 }}>
           <div className="row">
             <strong>v{ver.version_number}</strong>
+            <AvBadge status={ver.av_status} detail={ver.av_detail} />
             <span style={{ color: 'var(--muted)', fontSize: 12.5 }}>{formatBytes(ver.size_bytes)} · {ver.mime_type}</span>
             <span className="grow" />
             <span style={{ color: 'var(--faint)', fontSize: 12 }}>{formatTs(ver.created_at)}</span>
