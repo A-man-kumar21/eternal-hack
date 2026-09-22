@@ -73,3 +73,12 @@ function AnimatedRoutes() {
     </AnimatePresence>
   );
 }
+
+export default function App() {
+  return (
+    <>
+      <ScrollToTop />
+      <AnimatedRoutes />
+    </>
+  );
+}
