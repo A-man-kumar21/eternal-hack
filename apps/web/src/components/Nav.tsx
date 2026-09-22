@@ -134,7 +134,7 @@ export default function Nav() {
       transition={{ duration: 0.45, ease: EASE }}
     >
       <div className="topnav-inner">
-        <Link to="/cases" className="brand">
+        <Link to="/dashboard" className="brand">
           <motion.span
             className="shield"
             whileHover={{ rotate: -8, scale: 1.08 }}
@@ -146,6 +146,7 @@ export default function Nav() {
           <span>e-Abhilekh<small>Evidence Console</small></span>
         </Link>
         <nav className="nav-links">
+          <AnimatedNavLink to="/dashboard" label="Dashboard" />
           <AnimatedNavLink to="/cases" label="Cases" />
           <AnimatedNavLink to="/auditor" label="Auditor Console" />
         </nav>

@@ -249,6 +249,65 @@ exports, and audit-chain verification.
   flips one ciphertext byte (audit `DEMO_BLOB_CORRUPTED`); `POST /dev/reset`
   wipes DB + storage and reseeds.
 
+## System architecture
+
+```mermaid
+flowchart TB
+    subgraph Client["React 18 + TypeScript (dark evidence-console UI)"]
+        LAND["Landing page (/)"]
+        DASH["Command deck (/dashboard)"]
+        WS["Case workspace"]
+        AUD["Auditor Console + chain viz"]
+    end
+
+    subgraph API["FastAPI — 28 routes"]
+        AUTH["Auth: bcrypt + JWT (30m) / refresh (7d, rotating)"]
+        POL["Policy: case-scoped role matrix (service layer)"]
+        ING["Ingest: allowlist → MIME sniff → SHA-256 → ClamAV → encrypt"]
+        RED["Redaction: analyze → human review → derivative + leak check"]
+        CHA["Audit: hash-chained, same-txn writes, verify + anchor"]
+        EXP["Export: encrypted ZIP + manifest.json"]
+    end
+
+    subgraph Data["Data plane"]
+        PG[("PostgreSQL 16\ncases · docs · versions · audit chain")]
+        STG[("Object storage\nMinIO / local fallback\nciphertext only")]
+        WKR["Scan worker (DB-polling)"]
+    end
+
+    LAND --> DASH --> WS --> AUD
+    Client -->|"HTTPS · JWT · request IDs"| API
+    API --> PG
+    ING --> STG
+    WKR --> ING
+    CHA --> PG
+```
+
+Trust boundaries: the browser never sees plaintext keys; the worker and API share
+the master key only via env; every denial and every state change is a hash-chained
+audit event committed in the same transaction as the change itself.
+
+## Why this wins — judging criteria mapping
+
+| Criterion | Our answer |
+|---|---|
+| Problem fit | Built for PS-24's exact ask: access control, versioning, audit logging, encrypted storage for FIRs/evidence/charge sheets — each mapped to a demo beat. |
+| Technical depth | Envelope encryption (per-blob DEKs), hash-chained tamper-evident audit with anchored checkpoints, service-layer RBAC, ClamAV pipeline with graceful degradation. |
+| Innovation | The audit chain visualization turns an invisible property (tamper-evidence) into a judge-visible moment; the tamper simulator makes integrity *falsifiable* live. |
+| Completeness | Landing → dashboard → workspace → timeline → redaction → auditor → court-ready export: a full story arc, all seeded and demoable in 6 minutes. |
+| Honesty | Limitations are documented (see Deployment notes), not hidden — judges probe; we answer before they ask. |
+
+## Screenshots
+
+Drop demo screenshots in `docs/screenshots/` (see `docs/DEMO_SCRIPT.md` for the shot list):
+
+- `01-landing.png` — public landing page
+- `02-dashboard.png` — command deck with verified chain banner
+- `03-workspace.png` — case workspace with AV badges
+- `04-tamper.png` — INTEGRITY FAILURE banner after simulated tamper
+- `05-chain-viz.png` — audit chain visualization, all links green
+- `06-export.png` — export bundle with manifest.json
+
 ## Simplifications vs the contract
 
 1. `redaction_marks` gained a `matched_text` column (exact regex hit, powers the
@@ -265,18 +324,21 @@ exports, and audit-chain verification.
 
 ## Six-minute demo script
 
-Seed first (`POST http://localhost:8000/api/v1/dev/reset`), then log in —
-password `Demo@1234` for all fictional accounts.
+Seed first (`POST http://localhost:8000/api/v1/dev/reset`, or the ↺ button on the
+dashboard), then log in — password `Demo@1234` for all fictional accounts.
+Full presenter notes: `docs/DEMO_SCRIPT.md`.
 
 | Time | Beat | Who | What the audience sees |
 |---|---|---|---|
-| 0:00 | The gap | inv.sharma | "Evidence moves across paper registers and shared folders. Retrieval is slow; trust depends on manual logs." |
-| 0:35 | Secure ingest | inv.sharma | Upload the FIR PDF → status pulses INGESTING → worker validates, scans, hashes, encrypts → ACTIVE. Show the SHA-256. |
-| 1:35 | Integrity proof | inv.sharma | Verify → green, hashes match. Then the prepared tampered copy: hit "Demo: simulate tamper", verify again → full-width red **INTEGRITY FAILURE**, incident logged. |
-| 2:30 | Custody proof | inv.sharma → cust.iyer | Timeline playback: hand evidence to the custodian with a reason; each event shows actor, action, time, reason. |
-| 3:25 | Privacy proof | leg.verma | Redaction review: Aadhaar/phone/email marks proposed → approve → derivative PDF generated, linked to the untouched original. |
-| 4:30 | Access proof | outsider.mehta → aud.khan | Log in as the outsider (not a case member) → 403 + request ID. Switch to the auditor → the denial is already in the alert feed. |
-| 5:15 | Court-ready close | cust.iyer | Export selected versions → download ZIP → open `manifest.json`: files, hashes, custody summary, audit chain head. "We don't ask the court to trust our database." |
+| 0:00 | The story | — | Landing page: "Evidence you can prove." The paper-register problem, the sealed pipeline, four guarantees. |
+| 0:40 | Command deck | inv.sharma | Dashboard: CHAIN VERIFIED banner, stat cards, latest alerts. "The numbers a judge asks for, before they ask." |
+| 1:10 | Secure ingest | inv.sharma | Upload the FIR PDF → status pulses INGESTING → worker validates, scans, hashes, encrypts → ACTIVE. Show the SHA-256 + AV badge. |
+| 2:00 | Integrity proof | inv.sharma | Verify → green, hashes match. Then the prepared tampered copy: hit "Demo: simulate tamper", verify again → full-width red **INTEGRITY FAILURE**, incident logged. |
+| 2:50 | Chain proof | aud.khan | Auditor Console → Verify chain → the hash-linked chain lights up block by block, every link green. "Tamper-evidence you can watch." |
+| 3:40 | Custody proof | inv.sharma → cust.iyer | Timeline playback: hand evidence to the custodian with a reason; each event shows actor, action, time, reason. |
+| 4:25 | Privacy proof | leg.verma | Redaction review: Aadhaar/phone/email marks proposed → approve → derivative PDF generated, linked to the untouched original. |
+| 5:10 | Access proof | outsider.mehta → aud.khan | Log in as the outsider (not a case member) → 403 + request ID. Switch to the auditor → the denial is already in the alert feed. |
+| 5:45 | Court-ready close | cust.iyer | Export selected versions → download ZIP → open `manifest.json`: files, hashes, custody summary, audit chain head. "We don't ask the court to trust our database." |
 
 Backup plan: rehearse on a clean `dev/reset`; keep a screen recording as fallback
 only. If asked about admin tampering → show chain verification failing on a

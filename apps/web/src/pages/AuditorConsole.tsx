@@ -14,6 +14,40 @@ function outcomePill(o: string) {
   return <span className={`pill ${OUTCOME_PILL[o] ?? 'pill-gray'}`}>{o}</span>;
 }
 
+/** Visual hash-linked chain: each block shows its hash chained to the previous.
+ *  Before verification blocks render dimmed/pulsing; after verify each link
+ *  gets a check, and a broken link lights up red. */
+function ChainViz({ events, chain }: { events: AuditEvent[]; chain: ChainVerifyResult | null }) {
+  const verified: boolean | null = chain ? chain.ok : null;
+  const ordered = [...events].reverse(); // genesis first
+  return (
+    <div className={`chain-viz ${verified === false ? 'broken' : ''}`}>
+      {ordered.map((e, i) => {
+        const isBroken = chain?.broken_at_id != null && String(e.id) === String(chain.broken_at_id);
+        return (
+          <div
+            key={e.id}
+            className={`chain-block ${verified === null ? 'pending-verify' : ''} ${isBroken ? 'broken-link' : ''}`}
+            style={{ animationDelay: `${Math.min(i * 70, 1400)}ms` }}
+          >
+            <div className="cb-head">
+              <span className="cb-action">{e.action}</span>
+              {verified === true && !isBroken && <span className="cb-check">✓ link ok</span>}
+              {isBroken && <span style={{ color: 'var(--red)', fontWeight: 700 }}>✗ link broken here</span>}
+              <span className="grow" />
+              <span className="cb-meta">{e.actor_name ?? e.actor_id ?? '—'} · {formatTs(e.created_at)}</span>
+            </div>
+            <div className="cb-hash">
+              hash <b><Trunc text={e.event_hash} max={22} /></b>
+              {'  '}← prev <Trunc text={e.prev_hash} max={22} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function AuditorConsole() {
   const [caseId, setCaseId] = useState<string>('');
   const [chain, setChain] = useState<ChainVerifyResult | null>(null);
@@ -126,6 +160,14 @@ export default function AuditorConsole() {
                 <div>
                   <strong>{chain.ok ? 'CHAIN OK — hash links intact' : 'CHAIN BROKEN — tampering detected'}</strong>
                   <div>{chain.events_checked} events checked, every <code style={{ fontFamily: 'var(--mono)' }}>prev_hash → event_hash</code> link recomputed.</div>
+                  {chain.last_anchored_hash && (
+                    <div style={{ marginTop: 4 }}>
+                      ⚓ Anchored checkpoint: <code style={{ fontFamily: 'var(--mono)' }}>{chain.last_anchored_hash.slice(0, 20)}…</code>{' '}
+                      {chain.anchor_diverged
+                        ? <strong style={{ color: 'var(--red)' }}>— history rewritten after anchor!</strong>
+                        : <span style={{ color: 'var(--green)' }}>— matches, no rewrite</span>}
+                    </div>
+                  )}
                   {!chain.ok && chain.broken_at_id && <div className="rid">Broken at event: {chain.broken_at_id}</div>}
                 </div>
               </motion.div>
@@ -133,6 +175,21 @@ export default function AuditorConsole() {
           </AnimatePresence>
         </div>
       </Reveal>
+
+      {auditQuery.data && auditQuery.data.length > 0 && (
+        <>
+          <div className="section-title">⛓️ Chain visualization — genesis → latest</div>
+          <div className="card mb" style={{ padding: 18 }}>
+            {!chain && (
+              <div style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 12 }}>
+                Hit <strong>🔗 Verify chain</strong> above to light up every link — green means the
+                hash chain recomputes cleanly end to end.
+              </div>
+            )}
+            <ChainViz events={auditQuery.data} chain={chain} />
+          </div>
+        </>
+      )}
 
       {!caseId && <Empty icon="📜" title="Select a case" hint="Pick a case above to read its audit events." />}
       {auditQuery.isLoading && <Spinner label="Loading audit events…" />}

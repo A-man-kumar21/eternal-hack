@@ -33,10 +33,13 @@ from app.models import (  # noqa: E402
     AuditOutcome,
     Case,
     CaseMember,
+    Document,
     DocType,
     User,
 )
 from app.services import cases as case_service  # noqa: E402
+from app.services import custody as custody_service  # noqa: E402
+from app.services import redaction as redaction_service  # noqa: E402
 from app.services.ingest import process_job, stage_upload  # noqa: E402
 from app.storage import get_storage  # noqa: E402
 
@@ -152,7 +155,35 @@ def seed() -> None:
             db.commit()
             process_job(db, _job.id, get_storage(), request_id=f"seed-{uuid.uuid4().hex[:8]}")
 
-        print("seed: done — 5 users, 1 case, 4 documents ingested")
+        # --- enriched demo narrative: custody trail + reviewed redaction ---
+        cust = users["cust.iyer"]
+        leg = users["leg.verma"]
+        fir = db.query(Document).filter(
+            Document.case_id == case.id, Document.title == "First Information Report"
+        ).one()
+        rid = lambda: f"seed-{uuid.uuid4().hex[:8]}"  # noqa: E731
+
+        # investigator hands the FIR to the evidence custodian, who accepts
+        custody_service.record_custody(
+            db, user=inv, document_id=fir.id, action="handoff",
+            to_user_id=cust.id, reason="seed: FIR moved to evidence locker", request_id=rid(),
+        )
+        custody_service.record_custody(
+            db, user=cust, document_id=fir.id, action="accept",
+            to_user_id=None, reason="seed: custody accepted at locker", request_id=rid(),
+        )
+
+        # legal reviewer analyzes the FIR and approves every proposed PII mark,
+        # producing a redacted derivative (v2) linked to the untouched original
+        analysis = redaction_service.analyze(db, user=leg, document_id=fir.id, request_id=rid())
+        approvals = [{"mark_id": m["mark_id"], "approved": True} for m in analysis["marks"]]
+        if approvals:
+            redaction_service.apply_approvals(
+                db, user=leg, document_id=fir.id, approvals=approvals, request_id=rid()
+            )
+
+        print("seed: done — 5 users, 1 case, 4 documents ingested, "
+              "custody trail + redacted derivative ready")
     finally:
         db.close()
 

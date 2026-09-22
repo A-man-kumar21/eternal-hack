@@ -6,6 +6,8 @@ import Nav from './components/Nav';
 import { Spinner } from './components/ui';
 import { useAuth } from './auth/AuthContext';
 import Login from './pages/Login';
+import Landing from './pages/Landing';
+import Dashboard from './pages/Dashboard';
 import Cases from './pages/Cases';
 import CaseWorkspace from './pages/CaseWorkspace';
 import Timeline from './pages/Timeline';
@@ -55,9 +57,10 @@ function AnimatedRoutes() {
   return (
     <AnimatePresence mode="wait" initial={false}>
       <Routes location={location} key={location.pathname}>
+        <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
         <Route element={<RequireAuth><Shell /></RequireAuth>}>
-          <Route path="/" element={<Navigate to="/cases" replace />} />
+          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/cases" element={<Cases />} />
           <Route path="/cases/:id" element={<CaseWorkspace />} />
           <Route path="/cases/:id/timeline" element={<Timeline />} />
@@ -65,17 +68,8 @@ function AnimatedRoutes() {
           <Route path="/cases/:id/export" element={<ExportPage />} />
           <Route path="/auditor" element={<AuditorConsole />} />
         </Route>
-        <Route path="*" element={<Navigate to="/cases" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AnimatePresence>
-  );
-}
-
-export default function App() {
-  return (
-    <>
-      <ScrollToTop />
-      <AnimatedRoutes />
-    </>
   );
 }

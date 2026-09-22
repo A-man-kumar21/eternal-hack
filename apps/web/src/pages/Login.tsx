@@ -60,7 +60,7 @@ export default function Login() {
   const [error, setError] = useState<{ msg: string; rid: string | null } | null>(null);
   const [busy, setBusy] = useState(false);
 
-  if (!loading && user) return <Navigate to="/cases" replace />;
+  if (!loading && user) return <Navigate to="/dashboard" replace />;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -68,7 +68,7 @@ export default function Login() {
     setError(null);
     try {
       await login(username.trim(), password);
-      navigate('/cases', { replace: true });
+      navigate('/dashboard', { replace: true });
     } catch (err) {
       if (err instanceof ApiError) setError({ msg: err.friendly, rid: err.requestId });
       else setError({ msg: err instanceof Error ? err.message : 'Login failed', rid: null });

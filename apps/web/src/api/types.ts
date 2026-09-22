@@ -172,6 +172,8 @@ export interface ChainVerifyResult {
   ok: boolean;
   events_checked: number;
   broken_at_id: string | null;
+  last_anchored_hash?: string | null;
+  anchor_diverged?: boolean;
 }
 
 export const ROLE_LABEL: Record<Role, string> = {
