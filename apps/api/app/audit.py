@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .models import AuditEvent, AuditOutcome, User
+from .models import AuditAnchor, AuditEvent, AuditOutcome, User
 
 GENESIS = "GENESIS"
 _GLOBAL_PARTITION = "__GLOBAL__"
@@ -147,3 +147,60 @@ def actor_display_name(db: Session, actor_id: int | None) -> str | None:
         return None
     u = db.get(User, actor_id)
     return u.display_name if u else None
+
+
+def anchor_chain(db: Session, case_id: int, anchored_by: str = "anchor-job") -> AuditAnchor:
+    """Snapshot a case's current chain head. Append-only: existing anchor rows
+    are never updated or deleted. Same-transaction rules as write_audit —
+    the caller commits once (here: immediately, the anchor is the whole change).
+    """
+    head = last_event_hash(db, case_id)
+    count = (
+        db.execute(
+            select(func.count()).select_from(AuditEvent).where(AuditEvent.case_id == case_id)
+        ).scalar()
+        or 0
+    )
+    row = AuditAnchor(
+        case_id=case_id, anchored_hash=head, events_anchored=count, anchored_by=anchored_by
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def last_anchor(db: Session, case_id: int) -> AuditAnchor | None:
+    return db.execute(
+        select(AuditAnchor)
+        .where(AuditAnchor.case_id == case_id)
+        .order_by(AuditAnchor.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+
+def check_anchor(db: Session, case_id: int) -> tuple[str | None, bool]:
+    """Compare the live chain against the last anchor.
+
+    Returns (last_anchored_hash, diverged). ``diverged`` is True when the
+    first ``events_anchored`` events no longer hash to the anchored head —
+    i.e. history was rewritten AND the hashes reforged (which plain
+    verify_chain would miss). This is a more severe signal than a normal
+    chain break. Legitimate appends after the anchor do NOT count as
+    divergence: only the anchored prefix is compared.
+    """
+    anchor = last_anchor(db, case_id)
+    if anchor is None:
+        return None, False
+    if anchor.events_anchored == 0:
+        return anchor.anchored_hash, False
+    nth_hash = db.execute(
+        select(AuditEvent.event_hash)
+        .where(AuditEvent.case_id == case_id)
+        .order_by(AuditEvent.id)
+        .offset(anchor.events_anchored - 1)
+        .limit(1)
+    ).scalar()
+    if nth_hash is None:
+        return anchor.anchored_hash, True  # anchored events were deleted
+    return anchor.anchored_hash, nth_hash != anchor.anchored_hash

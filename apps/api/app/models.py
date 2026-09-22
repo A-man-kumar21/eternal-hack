@@ -200,6 +200,28 @@ class AuditEvent(Base):
     event_hash: Mapped[str] = mapped_column(String(64))
 
 
+class AuditAnchor(Base):
+    """Append-only anchor of audit chain heads.
+
+    Written ONLY by the anchor job (POST /audit/anchor). Nothing in the app
+    ever updates or deletes rows here — it is the independent reference
+    point verify-chain compares the live chain against, so an admin who
+    rewrites history and reforges hashes in ``audit_events`` is still caught.
+
+    For demo purposes this lives in the app DB; in production it would be a
+    separate store/service with independent credentials.
+    """
+
+    __tablename__ = "audit_anchors"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    case_id: Mapped[int] = mapped_column(ForeignKey("cases.id"), index=True)
+    anchored_hash: Mapped[str] = mapped_column(String(64))
+    events_anchored: Mapped[int] = mapped_column()  # chain length at anchor time
+    anchored_by: Mapped[str] = mapped_column(String(64), default="anchor-job")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
 class RedactionMark(Base):
     __tablename__ = "redaction_marks"
 

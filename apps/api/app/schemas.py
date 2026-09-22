@@ -232,6 +232,15 @@ class VerifyChainOut(BaseModel):
     ok: bool
     events_checked: int
     broken_at_id: int | None
+    last_anchored_hash: str | None = None
+    anchor_diverged: bool = False
+
+
+class AnchorOut(BaseModel):
+    case_id: int
+    anchored_hash: str
+    events_anchored: int
+    anchored_at: str
 
 
 class TimelineEventOut(BaseModel):

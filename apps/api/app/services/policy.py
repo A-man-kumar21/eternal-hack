@@ -27,6 +27,7 @@ ACTION_ROLES: dict[str, set[Role]] = {
     "redact": {Role.LEGAL_REVIEWER, Role.EVIDENCE_CUSTODIAN},
     "export": {Role.LEGAL_REVIEWER, Role.EVIDENCE_CUSTODIAN},
     "audit_read": {Role.INVESTIGATOR, Role.LEGAL_REVIEWER, Role.EVIDENCE_CUSTODIAN, Role.SECURITY_AUDITOR},
+    "anchor": {Role.SECURITY_AUDITOR},
 }
 
 # Actions that are forbidden once a case is CLOSED, regardless of the caller's
@@ -55,6 +56,7 @@ AUDIT_ACTION_FOR = {
     "redact": "REDACTION_APPLY",
     "export": "EXPORT_CREATE",
     "audit_read": "AUDIT_READ",
+    "anchor": "AUDIT_ANCHOR",
 }
 
 
