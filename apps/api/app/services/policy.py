@@ -29,6 +29,18 @@ ACTION_ROLES: dict[str, set[Role]] = {
     "audit_read": {Role.INVESTIGATOR, Role.LEGAL_REVIEWER, Role.EVIDENCE_CUSTODIAN, Role.SECURITY_AUDITOR},
 }
 
+# Actions that are forbidden once a case is CLOSED, regardless of the caller's
+# role. Reads (view/download/audit_read), custody_release and export stay
+# available so closed cases remain reviewable and releasable.
+CLOSED_BLOCKED_ACTIONS: set[str] = {
+    "upload",
+    "redact",
+    "custody_handoff",
+    "custody_accept",
+    "freeze",
+    "add_member",
+}
+
 # attempted action -> audit action name used on DENIED events
 AUDIT_ACTION_FOR = {
     "create_case": "CASE_CREATE",
@@ -97,12 +109,20 @@ def require_case_access(
     object_type: str = "case",
     object_id: str | int | None = None,
 ) -> Case:
-    """Enforce: case exists, caller is a member (or auditor on audit reads),
-    and the caller's role is permitted for `action`.
+    """Enforce: case exists, case is not CLOSED for mutating actions, caller is
+    a member (or auditor on audit reads), and the caller's role is permitted
+    for `action`.
 
     Returns the Case. Raises 403 (with DENIED audit) or 404.
     """
     case = get_case_or_404(db, case_id)
+    if case.status == "CLOSED" and action in CLOSED_BLOCKED_ACTIONS:
+        deny(
+            db, user=user, action=action, case_id=case_id,
+            object_type=object_type, object_id=object_id or case_id,
+            reason=f"forbidden: case {case.case_number} is CLOSED; '{action}' is blocked on closed cases",
+            request_id=request_id,
+        )
     is_auditor = user.role == Role.SECURITY_AUDITOR
     auditor_global = is_auditor and action in {"audit_read", "view"}
 
