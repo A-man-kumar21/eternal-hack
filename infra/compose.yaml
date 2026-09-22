@@ -1,0 +1,108 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: eabhilekh
+      POSTGRES_PASSWORD: eabhilekh
+      POSTGRES_DB: eabhilekh
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eabhilekh"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    # NOTE (2026-09-23): MinIO removed the `minio` org from Docker Hub, so
+    # minio/minio and minio/mc no longer exist there ("pull access denied").
+    # quay.io is MinIO's own registry; tags below verified pullable 2026-09.
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb --ignore-existing local/e-abhilekh &&
+      echo bucket-ready"
+    # one-shot container; exits 0 after creating the bucket
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://eabhilekh:eabhilekh@postgres:5432/eabhilekh
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "8000:8000"
+    volumes:
+      - apidata:/srv/data
+
+  worker:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://eabhilekh:eabhilekh@postgres:5432/eabhilekh
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+    command: ["python", "/srv/worker/scan_worker.py", "--interval", "5"]
+    volumes:
+      - apidata:/srv/data
+
+  # Frontend is built by a separate agent; this runs whatever is in apps/web.
+  web:
+    image: node:22
+    working_dir: /app/apps/web
+    volumes:
+      - ../apps/web:/app/apps/web
+    depends_on:
+      - api
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    command: sh -c "npm ci && npm run build && npx serve -s dist -l 3000"
+    ports:
+      - "3000:3000"
+
+  # Optional antivirus sidecar. Enable with: docker compose --profile av up
+  clamav:
+    image: clamav/clamav:latest
+    profiles: ["av"]
+    volumes:
+      - clamdb:/var/lib/clamav
+
+volumes:
+  pgdata:
+  miniodata:
+  apidata:
+  clamdb:

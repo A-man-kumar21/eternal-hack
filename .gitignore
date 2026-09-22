@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# Env / secrets
+.env
+
+# Runtime data (never commit blobs, staging, or local DBs)
+.storage/
+.staging/
+*.db
+*.sqlite
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
