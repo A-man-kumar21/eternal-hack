@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { motion } from 'motion/react';
 import { apiGet } from '../api/client';
 import type { CaseDetail, TimelineEvent, TimelineKind } from '../api/types';
-import { Empty, ErrorBanner, Spinner, Trunc, formatTs } from '../components/ui';
+import { Empty, ErrorBanner, SkeletonRows, Trunc, formatTs } from '../components/ui';
+import { EASE, Page, Stagger, springSnappy } from '../components/motion';
 
 const KINDS: TimelineKind[] = ['custody', 'audit', 'ingest', 'verify', 'redaction', 'export'];
 const KIND_ICON: Record<TimelineKind, string> = {
@@ -27,6 +29,7 @@ export default function Timeline() {
   const [playing, setPlaying] = useState(false);
   const [index, setIndex] = useState(0);
   const timer = useRef<number | null>(null);
+  const eventRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const caseQuery = useQuery({
     queryKey: ['case', caseId],
@@ -60,6 +63,13 @@ export default function Timeline() {
 
   useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current); }, []);
 
+  // Keep the currently-playing event in view
+  useEffect(() => {
+    if (!playing) return;
+    const el = eventRefs.current[events[index]?.id];
+    el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [playing, index, events]);
+
   const toggleKind = (k: TimelineKind) =>
     setKinds((ks) => (ks.includes(k) ? ks.filter((x) => x !== k) : [...ks, k]));
 
@@ -72,12 +82,10 @@ export default function Timeline() {
   const progress = events.length ? ((index + 1) / events.length) * 100 : 0;
 
   return (
-    <div className="page">
+    <Page>
       <div className="page-head">
         <div>
-          <div style={{ fontFamily: 'var(--mono)', color: 'var(--amber)', fontSize: 13, letterSpacing: 1 }}>
-            {caseQuery.data?.case_number ?? '…'}
-          </div>
+          <div className="eyebrow">{caseQuery.data?.case_number ?? '…'}</div>
           <h1>🕘 Custody timeline</h1>
           <p className="sub">Chronological chain-of-custody playback — every ingest, handoff, verification, redaction and export.</p>
         </div>
@@ -85,11 +93,16 @@ export default function Timeline() {
       </div>
 
       {tlQuery.error && <ErrorBanner error={tlQuery.error} onRetry={() => tlQuery.refetch()} />}
-      {tlQuery.isLoading && <Spinner label="Loading timeline…" />}
+      {tlQuery.isLoading && <SkeletonRows count={5} />}
 
       {!tlQuery.isLoading && !tlQuery.error && (
         <>
-          <div className="card mb">
+          <motion.div
+            className="card mb"
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, ease: EASE, delay: 0.05 }}
+          >
             <div className="row wrap" style={{ justifyContent: 'space-between' }}>
               <div className="row wrap">
                 {!playing
@@ -106,41 +119,57 @@ export default function Timeline() {
                 ))}
               </div>
             </div>
-            <div className="progress" aria-label="Playback progress"><div style={{ width: `${progress}%` }} /></div>
-          </div>
+            <div className="progress" aria-label="Playback progress">
+              <motion.div
+                animate={{ width: `${progress}%` }}
+                transition={{ duration: 0.5, ease: EASE }}
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </motion.div>
 
           {events.length === 0 && (
             <Empty icon="🕘" title="No events yet" hint="Ingest a document or record a custody event to start the chain." />
           )}
 
-          {events.map((ev, i) => {
-            const outcome = outcomeOf(ev);
-            const cls = `tl-event ${playing && i === index ? 'playing' : ''} ${i < index || (!playing && false) ? 'played' : ''}`;
-            return (
-              <div key={ev.id} className={cls}>
-                <div className="tic">{KIND_ICON[ev.kind] ?? '•'}</div>
-                <div className="body">
-                  <div className="row wrap" style={{ gap: 8 }}>
-                    <span className={`pill ${KIND_PILL[ev.kind]}`}>{ev.kind}</span>
-                    {outcome && (
-                      <span className={`pill ${outcome === 'ALLOWED' ? 'pill-green' : outcome === 'DENIED' || outcome === 'INCIDENT' || outcome === 'FAILED' ? 'pill-red' : 'pill-gray'}`}>
-                        {outcome}
-                      </span>
-                    )}
+          <Stagger>
+            {events.map((ev, i) => {
+              const outcome = outcomeOf(ev);
+              const isCurrent = playing && i === index;
+              const cls = `tl-event ${isCurrent ? 'playing' : ''} ${playing && i < index ? 'played' : ''}`;
+              return (
+                <motion.div
+                  key={ev.id}
+                  ref={(el) => { eventRefs.current[ev.id] = el; }}
+                  className={cls}
+                  variants={{ hidden: { opacity: 0, y: 18 }, show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: EASE } } }}
+                  animate={isCurrent ? { scale: 1.015 } : { scale: 1 }}
+                  transition={springSnappy}
+                >
+                  <div className="tic">{KIND_ICON[ev.kind] ?? '•'}</div>
+                  <div className="body">
+                    <div className="row wrap" style={{ gap: 8 }}>
+                      <span className={`pill ${KIND_PILL[ev.kind]}`}>{ev.kind}</span>
+                      {outcome && (
+                        <span className={`pill ${outcome === 'ALLOWED' ? 'pill-green' : outcome === 'DENIED' || outcome === 'INCIDENT' || outcome === 'FAILED' ? 'pill-red' : 'pill-gray'}`}>
+                          {outcome}
+                        </span>
+                      )}
+                    </div>
+                    <div className="action mt" style={{ marginTop: 8 }}>{ev.action}</div>
+                    <div className="meta">
+                      👤 <Trunc text={ev.actor} /> · 🧾 <Trunc text={ev.object_id} max={24} />
+                    </div>
+                    {ev.reason && <div className="reason">“{ev.reason}”</div>}
+                    {ev.detail && typeof ev.detail === 'string' && <div className="meta" style={{ marginTop: 6 }}>{ev.detail}</div>}
                   </div>
-                  <div className="action mt" style={{ marginTop: 8 }}>{ev.action}</div>
-                  <div className="meta">
-                    👤 <Trunc text={ev.actor} /> · 🧾 <Trunc text={ev.object_id} max={24} />
-                  </div>
-                  {ev.reason && <div className="reason">“{ev.reason}”</div>}
-                  {ev.detail && typeof ev.detail === 'string' && <div className="meta" style={{ marginTop: 6 }}>{ev.detail}</div>}
-                </div>
-                <div className="ts">{formatTs(ev.created_at)}</div>
-              </div>
-            );
-          })}
+                  <div className="ts">{formatTs(ev.created_at)}</div>
+                </motion.div>
+              );
+            })}
+          </Stagger>
         </>
       )}
-    </div>
+    </Page>
   );
 }

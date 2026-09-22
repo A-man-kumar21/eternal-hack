@@ -5,7 +5,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, apiGet, apiPost } from '../api/client';
 import type { CaseDetail } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
-import { Empty, ErrorBanner, Modal, Spinner } from '../components/ui';
+import { Empty, ErrorBanner, Modal, SkeletonCards } from '../components/ui';
+import { Item, Lift, Page, Stagger } from '../components/motion';
 
 export default function Cases() {
   const { user } = useAuth();
@@ -18,12 +19,28 @@ export default function Cases() {
     queryFn: () => apiGet<CaseDetail[]>('/cases'),
   });
 
-  if (isLoading) return <div className="page"><Spinner label="Loading cases…" /></div>;
+  if (isLoading) {
+    return (
+      <Page>
+        <div className="page-head">
+          <div>
+            <div className="eyebrow">Evidence lockers</div>
+            <h1>Case files</h1>
+          </div>
+        </div>
+        <SkeletonCards count={6} />
+      </Page>
+    );
+  }
+
+  const totalDocs = (data ?? []).reduce((n, c) => n + (c.document_count ?? 0), 0);
+  const totalMembers = (data ?? []).reduce((n, c) => n + c.members.length, 0);
 
   return (
-    <div className="page">
+    <Page>
       <div className="page-head">
         <div>
+          <div className="eyebrow">Evidence lockers</div>
           <h1>Case files</h1>
           <p className="sub">Every case is a sealed evidence locker — documents, custody chain, audit trail and exports live inside.</p>
         </div>
@@ -32,45 +49,67 @@ export default function Cases() {
 
       {error && <ErrorBanner error={error} onRetry={() => refetch()} />}
 
+      {!error && data && data.length > 0 && (
+        <Stagger className="stat-grid">
+          <Item className="card stat-card">
+            <div className="lbl">📁 Open cases</div>
+            <div className="val amber">{data.length}</div>
+          </Item>
+          <Item className="card stat-card">
+            <div className="lbl">📄 Documents sealed</div>
+            <div className="val">{totalDocs}</div>
+          </Item>
+          <Item className="card stat-card">
+            <div className="lbl">👥 Case members</div>
+            <div className="val blue">{totalMembers}</div>
+          </Item>
+        </Stagger>
+      )}
+
       {!error && data && data.length === 0 && (
         <Empty icon="📁" title="No cases yet" hint="Create your first case to start ingesting evidence."
           action={<button type="button" className="btn btn-primary" onClick={() => setShowNew(true)}>＋ New case</button>} />
       )}
 
-      <div className="card-grid">
+      <Stagger className="card-grid">
         {data?.map((c) => {
           const myRole = c.members.find((m) => m.user_id === user?.id)?.role;
           return (
-            <div key={c.id} className="card case-card" onClick={() => navigate(`/cases/${c.id}`)} role="button" tabIndex={0}
-              onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/cases/${c.id}`); }}>
-              <div className="num">{c.case_number}</div>
-              <h3>{c.title}</h3>
-              <div style={{ color: 'var(--muted)', fontSize: 13.5 }}>{c.description || 'No description.'}</div>
-              <div className="meta">
-                <span>📄 {c.document_count ?? '—'} docs</span>
-                <span>👥 {c.members.length} members</span>
-                {myRole && <span className="role-badge">{myRole.replace(/_/g, ' ')}</span>}
-              </div>
-            </div>
+            <Item key={c.id}>
+              <Lift
+                className="card case-card"
+                onClick={() => navigate(`/cases/${c.id}`)}
+                role="button" tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/cases/${c.id}`); }}
+              >
+                <div className="num">{c.case_number}</div>
+                <h3>{c.title}</h3>
+                <div style={{ color: 'var(--muted)', fontSize: 13.5, lineHeight: 1.55 }}>{c.description || 'No description.'}</div>
+                <div className="meta">
+                  <span>📄 {c.document_count ?? '—'} docs</span>
+                  <span>👥 {c.members.length} members</span>
+                  {myRole && <span className="role-badge">{myRole.replace(/_/g, ' ')}</span>}
+                </div>
+              </Lift>
+            </Item>
           );
         })}
-      </div>
+      </Stagger>
 
-      {showNew && (
-        <NewCaseModal
-          onClose={() => setShowNew(false)}
-          onCreated={(id) => {
-            setShowNew(false);
-            qc.invalidateQueries({ queryKey: ['cases'] });
-            navigate(`/cases/${id}`);
-          }}
-        />
-      )}
-    </div>
+      <NewCaseModal
+        open={showNew}
+        onClose={() => setShowNew(false)}
+        onCreated={(id) => {
+          setShowNew(false);
+          qc.invalidateQueries({ queryKey: ['cases'] });
+          navigate(`/cases/${id}`);
+        }}
+      />
+    </Page>
   );
 }
 
-function NewCaseModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
+function NewCaseModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (id: string) => void }) {
   const [caseNumber, setCaseNumber] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -93,7 +132,7 @@ function NewCaseModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
   };
 
   return (
-    <Modal title="New case" desc="You will be added as a member with your own role. Others can be added later from the workspace." onClose={onClose}>
+    <Modal open={open} title="New case" desc="You will be added as a member with your own role. Others can be added later from the workspace." onClose={onClose}>
       <form onSubmit={submit}>
         <div className="field">
           <label htmlFor="nc-num">Case number</label>

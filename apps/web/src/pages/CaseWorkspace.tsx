@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { DragEvent, FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { AnimatePresence, motion } from 'motion/react';
 import { ApiError, apiBlob, apiGet, apiPost, apiPostForm } from '../api/client';
 import { useCaseDocuments } from '../api/hooks';
 import type {
@@ -9,8 +10,9 @@ import type {
 } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import {
-  AvBadge, Empty, ErrorBanner, Hash, Modal, ReasonField, Spinner, StatusPill, formatBytes, formatTs,
+  AvBadge, Empty, ErrorBanner, Hash, Modal, ReasonField, SkeletonRows, Spinner, StatusPill, formatBytes, formatTs,
 } from '../components/ui';
+import { EASE, FadeIn, Item, Page, Stagger, springSnappy } from '../components/motion';
 
 const DOC_TYPES = ['FIR', 'EVIDENCE_PHOTO', 'CHARGE_SHEET', 'COURT_FILING', 'STATEMENT', 'OTHER'] as const;
 const DOC_ICON: Record<string, string> = {
@@ -53,23 +55,31 @@ export default function CaseWorkspace() {
     if (still.length !== pendingIds.length) setPendingIds(still);
   }, [docsQuery.data, pendingIds]);
 
-  if (caseQuery.isLoading) return <div className="page"><Spinner label="Opening case file…" /></div>;
-  if (caseQuery.error) return <div className="page"><ErrorBanner error={caseQuery.error} onRetry={() => caseQuery.refetch()} /></div>;
+  if (caseQuery.isLoading) return <Page><Spinner label="Opening case file…" /></Page>;
+  if (caseQuery.error) return <Page><ErrorBanner error={caseQuery.error} onRetry={() => caseQuery.refetch()} /></Page>;
 
   const c = caseQuery.data!;
 
   return (
-    <div className="page">
+    <Page>
       <div className="page-head">
         <div>
-          <div style={{ fontFamily: 'var(--mono)', color: 'var(--amber)', fontSize: 13, letterSpacing: 1 }}>{c.case_number}</div>
+          <div className="eyebrow">{c.case_number}</div>
           <h1>{c.title}</h1>
           <p className="sub">{c.description || 'No description.'}</p>
           <div className="row wrap mt" style={{ gap: 8 }}>
-            {c.members.map((m) => (
-              <span key={m.user_id} className="chip" title={m.username} style={{ cursor: 'default' }}>
+            {c.members.map((m, i) => (
+              <motion.span
+                key={m.user_id}
+                className="chip"
+                title={m.username}
+                style={{ cursor: 'default' }}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.15 + i * 0.05, duration: 0.3, ease: EASE }}
+              >
                 {m.display_name} <small>{m.role.replace(/_/g, ' ')}</small>
-              </span>
+              </motion.span>
             ))}
             <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowAddMember(true)}>＋ member</button>
           </div>
@@ -80,50 +90,78 @@ export default function CaseWorkspace() {
         </div>
       </div>
 
-      <UploadCard
-        caseId={caseId}
-        onUploaded={(docId) => {
-          setPendingIds((p) => [...p, docId]);
-          docsQuery.refetch();
-        }}
-      />
+      <FadeIn delay={0.1}>
+        <UploadCard
+          caseId={caseId}
+          onUploaded={(docId) => {
+            setPendingIds((p) => [...p, docId]);
+            docsQuery.refetch();
+          }}
+        />
+      </FadeIn>
 
       <div className="section-title">Documents {docsQuery.data ? `(${docsQuery.data.length})` : ''}</div>
-      {docsQuery.isLoading && <Spinner label="Loading documents…" />}
+      {docsQuery.isLoading && <SkeletonRows count={4} />}
       {docsQuery.error && <ErrorBanner error={docsQuery.error} onRetry={() => docsQuery.refetch()} />}
       {!docsQuery.isLoading && !docsQuery.error && docsQuery.data!.length === 0 && !pendingIds.length && (
         <Empty icon="📂" title="No documents yet" hint="Upload the first piece of evidence above — the ingest pipeline hashes, encrypts and stores it." />
       )}
-      {pendingIds.length > 0 && (
-        <div className="banner banner-info">
-          <span className="icon"><span className="spinner" /></span>
-          <div><strong>Ingest pipeline running…</strong>
-            <div>{pendingIds.length} document{pendingIds.length > 1 ? 's' : ''} being hashed, encrypted and stored. This list refreshes automatically.</div></div>
-        </div>
-      )}
-      {docsQuery.data?.map((d) => (
-        <div key={d.id} className={`doc-row ${selectedDoc === d.id ? 'selected' : ''}`}
-          onClick={() => setSelectedDoc(d.id)} role="button" tabIndex={0}
-          onKeyDown={(e) => { if (e.key === 'Enter') setSelectedDoc(d.id); }}>
-          <span className="icon">{DOC_ICON[d.doc_type] ?? '📄'}</span>
-          <div className="grow">
-            <div className="title">{d.title}</div>
-            <div className="sub">{d.doc_type} · v{d.current_version.version_number} · <Hash value={d.current_version.sha256} short={12} /> · {d.version_count} versions</div>
-            {d.status === 'QUARANTINED' && d.quarantine_reason && (
-              <div style={{ color: 'var(--red)', fontSize: 12.5, marginTop: 4 }}>⚠️ {d.quarantine_reason}</div>
-            )}
-          </div>
-          <StatusPill status={d.status} />
-        </div>
-      ))}
+      <AnimatePresence>
+        {pendingIds.length > 0 && (
+          <motion.div
+            className="banner banner-info"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.3, ease: EASE }}
+          >
+            <span className="icon"><span className="spinner" /></span>
+            <div><strong>Ingest pipeline running…</strong>
+              <div>{pendingIds.length} document{pendingIds.length > 1 ? 's' : ''} being hashed, encrypted and stored. This list refreshes automatically.</div></div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <Stagger>
+        {docsQuery.data?.map((d) => (
+          <Item key={d.id}>
+            <motion.div
+              className={`doc-row ${selectedDoc === d.id ? 'selected' : ''}`}
+              onClick={() => setSelectedDoc(d.id)}
+              role="button" tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter') setSelectedDoc(d.id); }}
+              whileHover={{ x: 4 }}
+              whileTap={{ scale: 0.995 }}
+              transition={springSnappy}
+              layout
+            >
+              <motion.span
+                className="icon"
+                initial={{ scale: 0.6, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 18 }}
+              >
+                {DOC_ICON[d.doc_type] ?? '📄'}
+              </motion.span>
+              <div className="grow">
+                <div className="title">{d.title}</div>
+                <div className="sub">{d.doc_type} · v{d.current_version.version_number} · <Hash value={d.current_version.sha256} short={12} /> · {d.version_count} versions</div>
+                {d.status === 'QUARANTINED' && d.quarantine_reason && (
+                  <div style={{ color: 'var(--red)', fontSize: 12.5, marginTop: 4 }}>⚠️ {d.quarantine_reason}</div>
+                )}
+              </div>
+              <StatusPill status={d.status} />
+            </motion.div>
+          </Item>
+        ))}
+      </Stagger>
 
-      {selectedDoc && (
-        <DocDrawer docId={selectedDoc} caseId={caseId} caseDetail={c} onClose={() => setSelectedDoc(null)} />
-      )}
-      {showAddMember && (
-        <AddMemberModal caseId={caseId} onClose={() => setShowAddMember(false)} />
-      )}
-    </div>
+      <AnimatePresence>
+        {selectedDoc && (
+          <DocDrawer docId={selectedDoc} caseId={caseId} caseDetail={c} onClose={() => setSelectedDoc(null)} />
+        )}
+      </AnimatePresence>
+      <AddMemberModal open={showAddMember} caseId={caseId} onClose={() => setShowAddMember(false)} />
+    </Page>
   );
 }
 
@@ -185,17 +223,27 @@ function UploadCard({ caseId, onUploaded }: { caseId: string; onUploaded: (docId
     <div className="card">
       <h3>📥 Ingest evidence</h3>
       <form onSubmit={submit}>
-        <div
+        <motion.div
           className={`dropzone ${dragging ? 'dragging' : ''}`}
           onClick={() => inputRef.current?.click()}
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
+          animate={dragging ? { scale: 1.015, borderColor: '#f5a623' } : { scale: 1 }}
+          transition={springSnappy}
         >
-          <div className="big">{file ? `📄 ${file.name}` : 'Drop a file here or click to browse'}</div>
+          <motion.div
+            className="big"
+            key={file ? file.name : 'empty'}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, ease: EASE }}
+          >
+            {file ? `📄 ${file.name}` : 'Drop a file here or click to browse'}
+          </motion.div>
           <div className="small">pdf · jpg · jpeg · png · txt — up to 25 MB. Pipeline: allowlist → size → MIME sniff → SHA-256 → AES-256-GCM encrypt → store.</div>
           <input ref={inputRef} type="file" hidden onChange={(e) => pick(e.target.files?.[0] ?? null)} />
-        </div>
+        </motion.div>
         <div className="compare">
           <div className="field">
             <label htmlFor="up-title">Title</label>
@@ -213,12 +261,34 @@ function UploadCard({ caseId, onUploaded }: { caseId: string; onUploaded: (docId
           <input id="up-desc" className="input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What is this document?" />
         </div>
         <ReasonField value={reason} onChange={setReason} />
-        {error && (
-          <div className="banner banner-error"><span className="icon">⚠️</span>
-            <div><strong>Upload rejected</strong><div>{error.msg}</div>
-              {error.rid && <div className="rid">Request ID: {error.rid}</div>}</div></div>
-        )}
-        {ok && <div className="banner banner-ok"><span className="icon">✅</span><div><strong>Accepted</strong><div>{ok}</div></div></div>}
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              key="err"
+              className="banner banner-error"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25, ease: EASE }}
+            >
+              <span className="icon">⚠️</span>
+              <div><strong>Upload rejected</strong><div>{error.msg}</div>
+                {error.rid && <div className="rid">Request ID: {error.rid}</div>}</div>
+            </motion.div>
+          )}
+          {ok && (
+            <motion.div
+              key="ok"
+              className="banner banner-ok"
+              initial={{ opacity: 0, y: -8, scale: 0.99 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3, ease: EASE }}
+            >
+              <span className="icon">✅</span><div><strong>Accepted</strong><div>{ok}</div></div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <button type="submit" className="btn btn-primary" disabled={!file || mut.isPending}>
           {mut.isPending ? <><span className="spinner" /> Uploading…</> : 'Upload & start pipeline'}
         </button>
@@ -240,10 +310,30 @@ function DocDrawer({ docId, caseId, caseDetail, onClose }: { docId: string; case
     },
   });
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
     <>
-      <div className="drawer-overlay" onClick={onClose} />
-      <aside className="drawer" aria-label="Document detail">
+      <motion.div
+        className="drawer-overlay"
+        onClick={onClose}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.22 }}
+      />
+      <motion.aside
+        className="drawer"
+        aria-label="Document detail"
+        initial={{ x: 90, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: 60, opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 340, damping: 34 }}
+      >
         <div className="drawer-head">
           <div>
             {query.data && <StatusPill status={query.data.status} />}
@@ -262,15 +352,32 @@ function DocDrawer({ docId, caseId, caseDetail, onClose }: { docId: string; case
               {(['overview', 'redactions', 'derivatives'] as const).map((t) => (
                 <button key={t} type="button" className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
                   {t[0].toUpperCase() + t.slice(1)}
+                  {tab === t && (
+                    <motion.span
+                      className="tab-ink"
+                      layoutId="drawer-tab-ink"
+                      transition={{ type: 'spring', stiffness: 480, damping: 38 }}
+                    />
+                  )}
                 </button>
               ))}
             </div>
-            {tab === 'overview' && <OverviewTab doc={query.data} caseDetail={caseDetail} />}
-            {tab === 'redactions' && <RedactionsTab doc={query.data} caseId={caseId} />}
-            {tab === 'derivatives' && <DerivativesTab doc={query.data} />}
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={tab}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.22, ease: EASE }}
+              >
+                {tab === 'overview' && <OverviewTab doc={query.data} caseDetail={caseDetail} />}
+                {tab === 'redactions' && <RedactionsTab doc={query.data} caseId={caseId} />}
+                {tab === 'derivatives' && <DerivativesTab doc={query.data} />}
+              </motion.div>
+            </AnimatePresence>
           </>
         )}
-      </aside>
+      </motion.aside>
     </>
   );
 }
@@ -346,32 +453,48 @@ function OverviewTab({ doc, caseDetail }: { doc: Document; caseDetail: CaseDetai
           {tamperState === 'armed' ? '⚠️ Click again to confirm tamper' : '⚗️ Demo: simulate tamper'}
         </button>
       </div>
-      {tamperState === 'done' && (
-        <div className="banner banner-warn"><span className="icon">⚗️</span>
-          <div><strong>Stored blob tampered (demo)</strong><div>One byte of ciphertext was flipped. Run <em>Verify integrity</em> to see the failure.</div></div></div>
-      )}
-      {tamperState === 'unavailable' && (
-        <div className="banner banner-info"><span className="icon">ℹ️</span>
-          <div><strong>Dev endpoint unavailable</strong><div><code style={{ fontFamily: 'var(--mono)' }}>/dev/corrupt-blob</code> only works when the backend runs with <code style={{ fontFamily: 'var(--mono)' }}>EABHILEKH_ENV=dev</code>.</div></div></div>
-      )}
+      <AnimatePresence>
+        {tamperState === 'done' && (
+          <motion.div key="t-done" className="banner banner-warn"
+            initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.25, ease: EASE }}>
+            <span className="icon">⚗️</span>
+            <div><strong>Stored blob tampered (demo)</strong><div>One byte of ciphertext was flipped. Run <em>Verify integrity</em> to see the failure.</div></div>
+          </motion.div>
+        )}
+        {tamperState === 'unavailable' && (
+          <motion.div key="t-un" className="banner banner-info"
+            initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.25, ease: EASE }}>
+            <span className="icon">ℹ️</span>
+            <div><strong>Dev endpoint unavailable</strong><div><code style={{ fontFamily: 'var(--mono)' }}>/dev/corrupt-blob</code> only works when the backend runs with <code style={{ fontFamily: 'var(--mono)' }}>EABHILEKH_ENV=dev</code>.</div></div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {verifyMut.error && <ErrorBanner error={verifyMut.error} />}
-      {verifyResult && verifyResult.match && (
-        <div className="banner banner-ok"><span className="icon">✅</span>
-          <div className="grow"><strong>INTEGRITY VERIFIED — hashes match</strong>
-            <div className="hash-block"><span className="lbl">Stored</span><Hash value={verifyResult.stored_sha256} /></div>
-            <div className="hash-block"><span className="lbl">Computed</span><Hash value={verifyResult.computed_sha256} /></div>
-            <div style={{ color: 'var(--muted)', fontSize: 12.5, marginTop: 6 }}>Verified at {formatTs(verifyResult.verified_at)} · version v{v.version_number}</div>
-          </div></div>
-      )}
-      {verifyResult && !verifyResult.match && (
-        <div className="integrity-fail" role="alert">
-          <h2>⛔ INTEGRITY FAILURE</h2>
-          <p><strong>Hash mismatch</strong> — the stored bytes no longer match the recorded SHA-256.</p>
-          <div className="hash-block" style={{ textAlign: 'left' }}><span className="lbl">Stored</span><Hash value={verifyResult.stored_sha256} /></div>
-          <div className="hash-block" style={{ textAlign: 'left' }}><span className="lbl">Computed</span><Hash value={verifyResult.computed_sha256} /></div>
-          <p style={{ marginTop: 10 }}>🚨 An <strong>INCIDENT</strong> audit event has been logged and surfaced in the Auditor Console.</p>
-        </div>
-      )}
+      <AnimatePresence>
+        {verifyResult && verifyResult.match && (
+          <motion.div key="v-ok" className="banner banner-ok"
+            initial={{ opacity: 0, scale: 0.98, y: -6 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 26 }}>
+            <span className="icon">✅</span>
+            <div className="grow"><strong>INTEGRITY VERIFIED — hashes match</strong>
+              <div className="hash-block"><span className="lbl">Stored</span><Hash value={verifyResult.stored_sha256} /></div>
+              <div className="hash-block"><span className="lbl">Computed</span><Hash value={verifyResult.computed_sha256} /></div>
+              <div style={{ color: 'var(--muted)', fontSize: 12.5, marginTop: 6 }}>Verified at {formatTs(verifyResult.verified_at)} · version v{v.version_number}</div>
+            </div>
+          </motion.div>
+        )}
+        {verifyResult && !verifyResult.match && (
+          <motion.div key="v-fail" className="integrity-fail" role="alert"
+            initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 22 }}>
+            <h2>⛔ INTEGRITY FAILURE</h2>
+            <p><strong>Hash mismatch</strong> — the stored bytes no longer match the recorded SHA-256.</p>
+            <div className="hash-block" style={{ textAlign: 'left' }}><span className="lbl">Stored</span><Hash value={verifyResult.stored_sha256} /></div>
+            <div className="hash-block" style={{ textAlign: 'left' }}><span className="lbl">Computed</span><Hash value={verifyResult.computed_sha256} /></div>
+            <p style={{ marginTop: 10 }}>🚨 An <strong>INCIDENT</strong> audit event has been logged and surfaced in the Auditor Console.</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="section-title">Actions</div>
       <div className="row wrap">
@@ -389,28 +512,19 @@ function OverviewTab({ doc, caseDetail }: { doc: Document; caseDetail: CaseDetai
       <div className="section-title">Versions</div>
       <VersionsList docId={doc.id} />
 
-      {showDownload && (
-        <DownloadModal
-          doc={doc}
-          onClose={() => setShowDownload(false)}
-          onError={(m) => setDlError(m)}
-        />
-      )}
-      {showCustody && (
-        <CustodyModal doc={doc} caseDetail={caseDetail} onClose={() => setShowCustody(false)} />
-      )}
-      {showFreeze && (
-        <ReasonActionModal
-          title="Freeze document"
-          desc="Frozen documents are sealed — no further changes until a custodian unfreezes (backend-enforced). A reason is required."
-          confirmLabel="Freeze"
-          danger
-          busy={freezeMut.isPending}
-          error={freezeMut.error}
-          onClose={() => setShowFreeze(false)}
-          onConfirm={(reason) => freezeMut.mutate(reason)}
-        />
-      )}
+      <DownloadModal open={showDownload} doc={doc} onClose={() => setShowDownload(false)} onError={(m) => setDlError(m)} />
+      <CustodyModal open={showCustody} doc={doc} caseDetail={caseDetail} onClose={() => setShowCustody(false)} />
+      <ReasonActionModal
+        open={showFreeze}
+        title="Freeze document"
+        desc="Frozen documents are sealed — no further changes until a custodian unfreezes (backend-enforced). A reason is required."
+        confirmLabel="Freeze"
+        danger
+        busy={freezeMut.isPending}
+        error={freezeMut.error}
+        onClose={() => setShowFreeze(false)}
+        onConfirm={(reason) => freezeMut.mutate(reason)}
+      />
     </div>
   );
 }
@@ -420,9 +534,9 @@ function VersionsList({ docId }: { docId: string }) {
   if (q.isLoading) return <Spinner label="Loading versions…" />;
   if (q.error) return <ErrorBanner error={q.error} />;
   return (
-    <div>
+    <Stagger>
       {q.data!.map((ver) => (
-        <div key={ver.id} className="card flat" style={{ marginBottom: 10, padding: 12 }}>
+        <Item key={ver.id} className="card flat" style={{ marginBottom: 10, padding: 12 }}>
           <div className="row">
             <strong>v{ver.version_number}</strong>
             <AvBadge status={ver.av_status} detail={ver.av_detail} />
@@ -431,13 +545,13 @@ function VersionsList({ docId }: { docId: string }) {
             <span style={{ color: 'var(--faint)', fontSize: 12 }}>{formatTs(ver.created_at)}</span>
           </div>
           <div className="mt"><Hash value={ver.sha256} short={32} /></div>
-        </div>
+        </Item>
       ))}
-    </div>
+    </Stagger>
   );
 }
 
-function DownloadModal({ doc, onClose, onError }: { doc: Document; onClose: () => void; onError: (m: string) => void }) {
+function DownloadModal({ open, doc, onClose, onError }: { open: boolean; doc: Document; onClose: () => void; onError: (m: string) => void }) {
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const v = doc.current_version;
@@ -457,7 +571,7 @@ function DownloadModal({ doc, onClose, onError }: { doc: Document; onClose: () =
   };
 
   return (
-    <Modal title="Download original" desc="Downloading the original evidence file requires a reason — it is written to the audit trail. (Contract: reason required for originals.)" onClose={onClose}>
+    <Modal open={open} title="Download original" desc="Downloading the original evidence file requires a reason — it is written to the audit trail. (Contract: reason required for originals.)" onClose={onClose}>
       <div className="hash-block"><span className="lbl">Version</span><span style={{ fontSize: 13.5 }}>v{v.version_number} · {formatBytes(v.size_bytes)}</span></div>
       <ReasonField value={reason} onChange={setReason} required />
       <div className="modal-actions">
@@ -470,7 +584,7 @@ function DownloadModal({ doc, onClose, onError }: { doc: Document; onClose: () =
   );
 }
 
-function CustodyModal({ doc, caseDetail, onClose }: { doc: Document; caseDetail: CaseDetail; onClose: () => void }) {
+function CustodyModal({ open, doc, caseDetail, onClose }: { open: boolean; doc: Document; caseDetail: CaseDetail; onClose: () => void }) {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [action, setAction] = useState('handoff');
@@ -490,7 +604,7 @@ function CustodyModal({ doc, caseDetail, onClose }: { doc: Document; caseDetail:
   const others = caseDetail.members.filter((m) => m.user_id !== user?.id);
 
   return (
-    <Modal title="Custody event" desc="Record a chain-of-custody movement. The reason is stored on the audit event." onClose={onClose}>
+    <Modal open={open} title="Custody event" desc="Record a chain-of-custody movement. The reason is stored on the audit event." onClose={onClose}>
       <div className="field">
         <label htmlFor="cu-action">Action</label>
         <select id="cu-action" className="select" value={action} onChange={(e) => setAction(e.target.value)}>
@@ -522,13 +636,13 @@ function CustodyModal({ doc, caseDetail, onClose }: { doc: Document; caseDetail:
 }
 
 /** Generic "reason first, then confirm" modal for privileged/destructive actions. */
-export function ReasonActionModal({ title, desc, confirmLabel, danger, busy, error, onClose, onConfirm }: {
-  title: string; desc: string; confirmLabel: string; danger?: boolean; busy: boolean; error: unknown;
+export function ReasonActionModal({ open, title, desc, confirmLabel, danger, busy, error, onClose, onConfirm }: {
+  open: boolean; title: string; desc: string; confirmLabel: string; danger?: boolean; busy: boolean; error: unknown;
   onClose: () => void; onConfirm: (reason: string) => void;
 }) {
   const [reason, setReason] = useState('');
   return (
-    <Modal title={title} desc={desc} onClose={onClose}>
+    <Modal open={open} title={title} desc={desc} onClose={onClose}>
       <ReasonField value={reason} onChange={setReason} required />
       {error ? <ErrorBanner error={error} /> : null}
       <div className="modal-actions">
@@ -551,7 +665,7 @@ function RedactionsTab({ doc, caseId }: { doc: Document; caseId: string }) {
 
   return (
     <div>
-      <p style={{ color: 'var(--muted)', fontSize: 13.5 }}>
+      <p style={{ color: 'var(--muted)', fontSize: 13.5, lineHeight: 1.55 }}>
         Rules-based PII detection (Aadhaar-like numbers, Indian phone numbers, emails; NER optional).
         Review and approve marks on the dedicated review page.
       </p>
@@ -562,22 +676,31 @@ function RedactionsTab({ doc, caseId }: { doc: Document; caseId: string }) {
         <Link className="btn btn-primary" to={`/cases/${caseId}/redact/${doc.id}`}>Open redaction review →</Link>
       </div>
       {mut.error && <ErrorBanner error={mut.error} />}
-      {marks && (
-        <div className="mt">
-          <div className="section-title">Proposed marks ({marks.length})</div>
-          {marks.length === 0 && <Empty icon="🔎" title="No marks proposed" hint="The analyzer found no PII patterns in the extracted text." />}
-          {marks.slice(0, 5).map((m) => (
-            <div key={m.mark_id} className="mark-card">
-              <div className="grow">
-                <span className="pill pill-violet">{m.label}</span>{' '}
-                <span style={{ color: 'var(--muted)', fontSize: 12.5 }}>page {m.page} · {(m.confidence * 100).toFixed(0)}%</span>
-                <div className="mark-excerpt">{m.text_excerpt}</div>
+      <AnimatePresence>
+        {marks && (
+          <motion.div
+            key="marks"
+            className="mt"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.35, ease: EASE }}
+          >
+            <div className="section-title">Proposed marks ({marks.length})</div>
+            {marks.length === 0 && <Empty icon="🔎" title="No marks proposed" hint="The analyzer found no PII patterns in the extracted text." />}
+            {marks.slice(0, 5).map((m) => (
+              <div key={m.mark_id} className="mark-card">
+                <div className="grow">
+                  <span className="pill pill-violet">{m.label}</span>{' '}
+                  <span style={{ color: 'var(--muted)', fontSize: 12.5 }}>page {m.page} · {(m.confidence * 100).toFixed(0)}%</span>
+                  <div className="mark-excerpt">{m.text_excerpt}</div>
+                </div>
               </div>
-            </div>
-          ))}
-          {marks.length > 5 && <div style={{ color: 'var(--faint)', fontSize: 12.5 }}>…and {marks.length - 5} more — open the review page.</div>}
-        </div>
-      )}
+            ))}
+            {marks.length > 5 && <div style={{ color: 'var(--faint)', fontSize: 12.5 }}>…and {marks.length - 5} more — open the review page.</div>}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -591,9 +714,9 @@ function DerivativesTab({ doc }: { doc: Document }) {
   if (q.error) return <ErrorBanner error={q.error} />;
   if (q.data!.length === 0) return <Empty icon="🧬" title="No derivatives yet" hint="Generate a redacted derivative from the Redactions tab." />;
   return (
-    <div>
+    <Stagger>
       {q.data!.map((d) => (
-        <div key={d.id} className="card flat" style={{ marginBottom: 10, padding: 12 }}>
+        <Item key={d.id} className="card flat" style={{ marginBottom: 10, padding: 12 }}>
           <div className="row">
             <strong>v{d.version_number}</strong>
             <span className="pill pill-violet">derivative</span>
@@ -606,13 +729,13 @@ function DerivativesTab({ doc }: { doc: Document }) {
               ⬅ derived from {d.parent_version_number !== undefined ? `v${d.parent_version_number}` : 'parent version'} — original bytes untouched
             </div>
           )}
-        </div>
+        </Item>
       ))}
-    </div>
+    </Stagger>
   );
 }
 
-function AddMemberModal({ caseId, onClose }: { caseId: string; onClose: () => void }) {
+function AddMemberModal({ open, caseId, onClose }: { open: boolean; caseId: string; onClose: () => void }) {
   const qc = useQueryClient();
   const [userId, setUserId] = useState('');
   const [role, setRole] = useState('INVESTIGATOR');
@@ -626,7 +749,7 @@ function AddMemberModal({ caseId, onClose }: { caseId: string; onClose: () => vo
   });
 
   return (
-    <Modal title="Add case member" desc="Only investigators and custodians who are members may add members (backend-enforced)." onClose={onClose}>
+    <Modal open={open} title="Add case member" desc="Only investigators and custodians who are members may add members (backend-enforced)." onClose={onClose}>
       <div className="field">
         <label htmlFor="am-user">User</label>
         <select id="am-user" className="select" value={userId} onChange={(e) => setUserId(e.target.value)}>
